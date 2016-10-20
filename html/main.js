@@ -32,6 +32,8 @@ function readInput() {
         intro.style.display = 'none';
 
         tiliparser.print(tiliData);
+        console.log('tiliData', tiliData);
+        window.tiliData = tiliData;
 
         buildTiliparserVisualization(tiliData);
 

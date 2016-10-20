@@ -188,7 +188,8 @@ class TiliparserSection {
         this.sum = 0;
         this.numberOfSections = 1;
         this.otherCounts = {};
-        this.otherSums = {};
+        this.otherGainSums = {};
+        this.otherSpendSums = {};
     }
     addItem(i) {
         this.items.push(i);
@@ -200,10 +201,14 @@ class TiliparserSection {
 
         if (this.otherCounts[i.other] === undefined) {
             this.otherCounts[i.other] = 0;
-            this.otherSums[i.other] = 0;
+            this.otherGainSums[i.other] = 0;
+            this.otherSpendSums[i.other] = 0;
         }
         this.otherCounts[i.other] = (this.otherCounts[i.other] || 0) + 1;
-        this.otherSums[i.other] = (this.otherSums[i.other] || 0) + i.sum;
+        if (i.sum > 0)
+            this.otherGainSums[i.other] = (this.otherGainSums[i.other] || 0) + i.sum;
+        else
+            this.otherSpendSums[i.other] = (this.otherSpendSums[i.other] || 0) + i.sum;
     }
     makeAverageSection(numberOfSections) {
         this.numberOfSections = numberOfSections;
@@ -252,10 +257,10 @@ class TiliparserSection {
         return this._getTopData(this.otherCounts, this._formatCount);
     }
     getTopGains() {
-        return this._getTopData(this.otherSums, this._formatSum).filter(data => data.value > 0);
+        return this._getTopData(this.otherGainSums, this._formatSum).filter(data => data.value > 0);
     }
     getTopSpends() {
-        return this._getTopData(this.otherSums, this._formatSum, 'reverse').filter(data => data.value < 0);
+        return this._getTopData(this.otherSpendSums, this._formatSum, 'reverse').filter(data => data.value < 0);
     }
     print(detailed) {
         var self = this;
