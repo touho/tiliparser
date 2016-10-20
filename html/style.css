@@ -1,0 +1,143 @@
+body {
+    font-family: Arial, Helvetica;
+    font-weight: 300;
+    font-size: 1.2vw;
+    background: #0d5e8f;
+    background: linear-gradient(#0d5e8f, #145780);
+    background-size: cover;
+    background-attachment: fixed;
+    padding-bottom: 50px;
+}
+
+#intro {
+    margin: auto;
+    color: #b1e2ff;
+    font-size: 1.4vw;
+    width: 50vw;
+    text-align: left;
+    line-height: 2em;
+    padding-top: 30px;
+}
+
+#title {
+    position: absolute;
+    top: 4px;
+    left: 10px;
+    color: white;
+    font-family: monospace;
+    font-size: 2vw;
+}
+
+#info {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    font-size: 1vw;
+    line-height: 1.2em;
+}
+
+#output {
+    margin-top: 17px;
+}
+
+.section {
+    border-radius: 5px 5px 0 0;
+    background: rgba(240, 248, 255, 0.86);
+    margin: 5px;
+    margin-bottom: 20px;
+    border: 1px solid white;
+    box-shadow: 1px 2px 15px 1px #0a334c;
+    min-height: 98px;
+}
+
+.sectionSeparator {
+    height: 21px;
+    color: #639cbd;
+    margin-left: 25px;
+    font-size: 1vw;
+    padding-top: 15px;
+}
+
+.section.detailed {
+    background: aliceblue;
+}
+
+.topData {
+    display: inline-block;
+    vertical-align: top;
+    margin-left: 30px;
+}
+
+.topDataKey {
+}
+.topDataValue {
+    margin-left: 10px;
+}
+.sumData {
+    position: relative;
+    margin: 5px;
+}
+.sumValue {
+    position: absolute;
+    top: 0px;
+    left: 71px;
+    white-space: nowrap;
+}
+.sumCount {
+    position: absolute;
+    top: 0px;
+    left: 167px;
+    white-space: nowrap;
+}
+
+.mainValue {
+    color: #2e739c;
+}
+.secondaryInformation, a {
+    color: #71a4c3;
+}
+a:hover {
+    color: white;
+}
+
+b {
+    color: #245979;
+}
+
+.sectionName {
+    border-radius: 5px 5px 0 0;
+    padding: 6px;
+    background: rgba(57, 133, 179, 0.55);
+    color: #d8f0ff;
+    margin-bottom: 5px;
+    padding-left: 20px;
+    box-shadow: 0 3px 1px -1px #3985b3;
+}
+.section.detailed .sectionName {
+    background: #3985b3;
+}
+
+.leftSide {
+    position: absolute;
+}
+
+.rightSide {
+    margin: 5px;
+    margin-left: 200px;
+}
+
+.seeMoreButton {
+    font-size: 0.8vw;
+    cursor: pointer;
+    margin-left: 20px;
+    position: relative;
+    bottom: 2px;
+}
+
+.seeMoreButton:hover {
+    color: #8fd4ff;
+}
+
+.invalidFileError {
+    color: white;
+}

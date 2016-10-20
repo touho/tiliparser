@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <html>
-<body>
-    hei
+<head>
+    <meta charset="utf-8">
+    <script src="redom.min.js"></script>
+    <script src="tiliparser.js"></script>
+
+    <script src="ui.js"></script>
+    <script src="main.js"></script>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <title>Tiliparser</title>
+</head>
+<body onload="init()">
+    <!--<textarea id="textarea" onchange="textareaEdited()"></textarea>-->
+
+    <span id="title">Tiliparser</span>
+
+    <div style="text-align: center;">
+        <div id="intro" style="text-align: left;">
+            <ul>
+                <li>Get a bank transfer report file from your bank web site (Nordea or Osuuspankki)</li>
+                <li>Drag the file to this input to see a summary of your transactions:</li>
+            </ul>
+        </div>
+
+        <input id="input" onchange="readInput()" type="file">
+    </div>
+
+    <div id="output"></div>
+
+
+    <div id="info" class="secondaryInformation">
+        Information is not stored or sent anywhere.<br>
+        <a href="https://github.com/touho/tiliparser">Tiliparser in GitHub</a>
+    </div>
 </body>
 </html>
