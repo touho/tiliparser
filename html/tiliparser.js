@@ -82,8 +82,14 @@ var parsers = {
         dateIndex: 0,
         valueIndex: 3,
         otherIndex: 4,
+        otherFallbackIndex: 7,
         getRows(data) {
-            return data.split('\n\r');
+            var idiotDoubleBreakCount = (data.match(/\n\n/g) || []).length;
+            var doubleBreakCount = (data.match(/\n\r/g) || []).length;
+            if (idiotDoubleBreakCount > doubleBreakCount)
+                return data.split('\n\n');
+            else
+                return data.split('\n\r');
         },
         getItems(row) {
             return row.split('\t');
@@ -94,6 +100,7 @@ var parsers = {
         dateIndex: 0,
         valueIndex: 2,
         otherIndex: 5,
+        otherFallbackIndex: -1,
         getRows(data) {
             return data.split('\n');
         },
@@ -103,19 +110,24 @@ var parsers = {
     }
 };
 
+/*
+Nordea has \n\r, but copy pasted nordea has \n\n
+ */
 function getParser(data) {
     var doubleBreakCount = (data.match(/\n\r/g) || []).length;
     var singleBreakCount = (data.match(/\n/g) || []).length;
+    var idiotDoubleBreakCount = (data.match(/\n\n/g) || []).length;
+    var semicolonCount = (data.match(/\n\n/g) || []).length;
 
-    if (doubleBreakCount > singleBreakCount * 0.1)
-        return parsers.nordea;
+    if (semicolonCount > singleBreakCount)
+        return parsers.op;
     else
-        return parsers.op
+        return parsers.nordea;
 }
 
 function parseTiliparserDate(date) {
     var a = date.split('.');
-    return new Date(a[2], a[1], a[0]);
+    return new Date(a[2], a[1]-1, a[0]);
 }
 
 function parseTiliparserValue(value) {
@@ -140,6 +152,8 @@ function buildTiliparserSections(data) {
     var items = rows.map(function (r) {
         return new TiliparserItem(r, parser);
     }).filter(i => i.isValid());
+    console.log(`${ items.length } lines out of ${ rows.length } were parsed as valid transaction lines`);
+
     items.forEach(addItemToItsSection);
 
     return Object.keys(sections).sort().map(sKey => {
@@ -152,7 +166,7 @@ class TiliparserItem {
         var items = parser.getItems(row);
         this.date = parseTiliparserDate(items[parser.dateIndex]);
         this.sum = parseTiliparserValue(items[parser.valueIndex]);
-        this.other = (items[parser.otherIndex] || '').toLowerCase();
+        this.other = (items[parser.otherIndex] || items[parser.otherFallbackIndex] || '').toLowerCase();
         this.month = this.date.getMonth() + 1;
         this.year = this.date.getFullYear();
         this.section = `${ this.year }-${ ('0'+this.month).slice(-2) }`;
@@ -161,7 +175,6 @@ class TiliparserItem {
         if (isNaN(this.date)) return false;
         if (!this.sum) return false;
         if (!this.other || this.other.length == 0) return false;
-
         return true;
     }
 }
