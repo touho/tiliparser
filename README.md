@@ -6,4 +6,6 @@ Tiliparser parses Nordea account transfers and shows you useful monthly informat
 
 How to use:
 - Get your account transfer data from Nordea bank and save it on your drive
-- run 'node tiliparser.js filename' on the file
+- Open html/index.html or run 'node main.js filename' on the file
+
+Try it here: http://touho.kapsi.fi/tiliparser/
