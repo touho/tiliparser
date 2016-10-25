@@ -14,7 +14,6 @@ function buildTiliparserVisualization(tiliData) {
     tiliparserElement.update(tiliData);
 }
 
-
 class UITiliparser {
     constructor() {
         this.el = el('div',

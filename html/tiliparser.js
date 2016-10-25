@@ -76,7 +76,7 @@ tiliparser.print = sectionData => {
     console.log();
 }
 
-var parsers = {
+var tiliparsers = {
     nordea: {
         name: 'nordea',
         dateIndex: 0,
@@ -117,12 +117,12 @@ function getParser(data) {
     var doubleBreakCount = (data.match(/\n\r/g) || []).length;
     var singleBreakCount = (data.match(/\n/g) || []).length;
     var idiotDoubleBreakCount = (data.match(/\n\n/g) || []).length;
-    var semicolonCount = (data.match(/\n\n/g) || []).length;
+    var semicolonCount = (data.match(/;/g) || []).length;
 
     if (semicolonCount > singleBreakCount)
-        return parsers.op;
+        return tiliparsers.op;
     else
-        return parsers.nordea;
+        return tiliparsers.nordea;
 }
 
 function parseTiliparserDate(date) {
