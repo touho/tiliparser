@@ -1,0 +1,142 @@
+:root {
+  color-scheme: light;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  background: #f4f1ee;
+  color: #1f2328;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 2.5rem 4vw 4rem;
+  background: radial-gradient(circle at top, #fdf6ee 0%, #f4f1ee 50%, #ede8e2 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: clamp(1rem, 2.4vw, 1.4rem);
+  margin: 0 0 0.6rem;
+  color: #8a7f77;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.sub {
+  margin: 0;
+  max-width: 38rem;
+  color: #4b4f56;
+}
+
+.uploader {
+  display: grid;
+  gap: 1rem;
+  min-width: 220px;
+}
+
+label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #5b5f66;
+}
+
+select,
+.file {
+  border: 1px solid #c9c2bb;
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  background: #fff;
+  font-size: 0.9rem;
+}
+
+.file {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.05);
+}
+
+.card h3 {
+  margin: 0.4rem 0 0;
+  font-size: 1.4rem;
+}
+
+.grid-block {
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.4rem;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.06);
+}
+
+.grid-block h2 {
+  margin: 0 0 1rem;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.split ol {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #2f3338;
+}
+
+.warnings {
+  background: #fff4e8;
+  border-radius: 16px;
+  padding: 1rem 1.2rem;
+  color: #6c3d00;
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 1.8rem 1.4rem 3rem;
+  }
+  .hero {
+    align-items: flex-start;
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "tiliparser",
+  "version": "1.0.0",
+  "description": "tiliparser.js",
+  "homepage": "https://github.com/touho/tiliparser#readme",
+  "bugs": {
+    "url": "https://github.com/touho/tiliparser/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/touho/tiliparser.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {}
+}
