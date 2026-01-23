@@ -45,10 +45,67 @@ tiliparser.build = data => {
         });
     }
 
+    // Recurring
+    var recurring = null;
+    if (sections.length > 0) {
+        recurring = {
+            sums: {},
+            others: {}
+        };
+        sections.forEach(s => {
+            s.items.forEach(i => {
+                let monthKey = '' + i.date.getFullYear() + '-' + i.date.getMonth();
+                if (!recurring.sums[i.sum]) {
+                    recurring.sums[i.sum] = { name: ''+i.sum, count: 0, others: [], total: 0, months: {} }
+                }
+                recurring.sums[i.sum].count++;
+                recurring.sums[i.sum].total += i.sum;
+                recurring.sums[i.sum].others.push(i.other);
+                recurring.sums[i.sum].months[monthKey] = true;
+
+                if (!recurring.others[i.other]) {
+                    recurring.others[i.other] = { name: i.other, count: 0, sums: [], total: 0, months: {} }
+                }
+                recurring.others[i.other].count++;
+                recurring.others[i.other].total += i.sum;
+                recurring.others[i.other].sums.push(i.sum);
+                recurring.others[i.other].months[monthKey] = true;
+            });
+        });
+        function handleRecurringItem(obj, key, array) {
+            if (obj[key].count == 1 || Object.keys(obj[key].months).length == 1) {
+                delete obj[key];
+            } else {
+                obj[key].months = Object.keys(obj[key].months).length;
+                array.push(obj[key]);
+            }
+        }
+        let sumArray = [];
+        for (let sum in recurring.sums) {
+            handleRecurringItem(recurring.sums, sum, sumArray);
+        }
+
+        let otherArray = [];
+        for (let other in recurring.others) {
+            handleRecurringItem(recurring.others, other, otherArray);
+        }
+
+        let sort = (a, b) => {
+            if (a.months > b.months) return -1;
+            if (a.months < b.months) return 1;
+            if (Math.abs(a.total) > Math.abs(b.total)) return -1;
+            return 1;
+        };
+
+        recurring.sums = sumArray.sort(sort);
+        recurring.others = otherArray.sort(sort);
+    }
+
     return {
         sections,
         averageSection,
-        totalSection
+        totalSection,
+        recurring,
     };
 }
 
@@ -73,6 +130,10 @@ tiliparser.print = sectionData => {
     else
         console.log(`No data available`);
 
+    if (sectionData.recurring) {
+        console.log("sectionData.recurring", sectionData.recurring)
+    }
+
     console.log();
 }
 
@@ -80,26 +141,21 @@ var tiliparsers = {
     nordea: {
         name: 'nordea',
         dateIndex: 0,
-        valueIndex: 3,
-        otherIndex: 4,
-        otherFallbackIndex: 7,
+        valueIndex: 1,
+        otherIndex: 5, // Source or destination of money
+        otherFallbackIndex: -1,
         getRows(data) {
-            var idiotDoubleBreakCount = (data.match(/\n\n/g) || []).length;
-            var doubleBreakCount = (data.match(/\n\r/g) || []).length;
-            if (idiotDoubleBreakCount > doubleBreakCount)
-                return data.split('\n\n');
-            else
-                return data.split('\n\r');
+            return data.split('\n');
         },
         getItems(row) {
-            return row.split('\t');
+            return row.split(';');
         }
     },
     op: {
         name: 'op',
         dateIndex: 0,
         valueIndex: 2,
-        otherIndex: 5,
+        otherIndex: 5, // Source or destination of money
         otherFallbackIndex: -1,
         getRows(data) {
             return data.split('\n');
@@ -110,24 +166,27 @@ var tiliparsers = {
     }
 };
 
-/*
-Nordea has \n\r, but copy pasted nordea has \n\n
- */
 function getParser(data) {
-    var doubleBreakCount = (data.match(/\n\r/g) || []).length;
-    var singleBreakCount = (data.match(/\n/g) || []).length;
-    var idiotDoubleBreakCount = (data.match(/\n\n/g) || []).length;
-    var semicolonCount = (data.match(/;/g) || []).length;
-
-    if (semicolonCount > singleBreakCount)
-        return tiliparsers.op;
-    else
-        return tiliparsers.nordea;
+    // Only nordea csv supported now
+    return tiliparsers.nordea;
 }
 
 function parseTiliparserDate(date) {
-    var a = date.split('.');
-    return new Date(a[2], a[1]-1, a[0]);
+    if (typeof date != "string") {
+        return new Date();
+    }
+    if (date.indexOf("/") >= 0) {
+        return new Date(date);
+        var a = date.split('/');
+        console.log("date", a, new Date(a[2], a[1]-1, a[0]))
+        return new Date(a[2], a[1]-1, a[0]);
+    } else if (date.indexOf(".") >= 0) {
+        var a = date.split('.');
+        return new Date(a[2], a[1]-1, a[0]);
+    } else {
+        console.log("Date error", date);
+        return new Date();
+    }
 }
 
 function parseTiliparserValue(value) {
@@ -187,7 +246,7 @@ class TiliparserSection {
         this.negativeItems = [];
         this.sum = 0;
         this.numberOfSections = 1;
-        this.otherCounts = {};
+        this.otherCounts = {}; // Source or destination of money
         this.otherGainSums = {};
         this.otherSpendSums = {};
     }
@@ -296,6 +355,5 @@ class TiliparserSection {
         printTopData('Most transactions with', this.getTopCounts().slice(0, topCountCount));
         printTopData('Most gained from', this.getTopGains().slice(0, topSumCount));
         printTopData('Most spent to', this.getTopSpends().slice(0, topSumCount));
-
     }
 }

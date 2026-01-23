@@ -19,6 +19,7 @@ class UITiliparser {
         this.el = el('div',
             this.totalSection = new UISection(true),
             this.averageSection = new UISection(true),
+            this.recurringSection = new RecurringUISection(),
             el('div.sectionSeparator', 'Monthly - most recent first'),
             this.monthlyList = list('div', UISection)
         );
@@ -27,6 +28,35 @@ class UITiliparser {
         this.monthlyList.update(tiliData.sections.reverse());
         this.averageSection.update(tiliData.averageSection);
         this.totalSection.update(tiliData.totalSection);
+        this.recurringSection.update(tiliData.recurringSection);
+    }
+}
+
+class RecurringUISection {
+    constructor() {
+        this.el = el('div.section',
+            this.name = el('div.sectionName'),
+            // this.left = el('div.leftSide',
+            //     this.gains = new UISumData,
+            //     this.spends = new UISumData,
+            //     this.total = new UISumData
+            // ),
+            this.right = el('div.rightSide',
+                this.topSums = new UITopData('Recurring sums', true),
+                this.topOthers = new UITopData('Recurring accounts', true)
+            )
+        );
+    }
+    update(recurring) {
+        if (!recurring) {
+            this.el.style.display = 'none';
+            return;
+        }
+        this.el.style.display = '';
+
+        this.name.textContent = section.name;
+        this.topSums.update(recurring.sums.map(i => ({ key: i.name, value: i.months })).slice(0, 10));
+        this.topOthers.update(recurring.others.map(i => ({ key: i.name, value: i.months })).slice(0, 10));
     }
 }
 
@@ -95,7 +125,7 @@ class UITopData {
     }
     update(data) {
         this.data = data;
-        this.fullData = data.map(d => d.value + '\t' + d.key).join('\n');
+        this.fullData = data.map(d => d.value + 'e ' + d.key).join('\n');
         this.name.setAttribute('title', this.fullData);
 
         var slicedData = data.slice(0, this.isDetailed ? 10 : 5);

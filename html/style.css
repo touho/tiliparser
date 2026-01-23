@@ -1,7 +1,7 @@
 body {
     font-family: Arial, Helvetica;
     font-weight: 300;
-    font-size: 1.2vw;
+    font-size: 12px;
     background: #0d5e8f;
     background: linear-gradient(#0d5e8f, #145780);
     background-size: cover;
@@ -12,7 +12,7 @@ body {
 #intro {
     margin: auto;
     color: #b1e2ff;
-    font-size: 1.4vw;
+    font-size: 16px;
     width: 50vw;
     text-align: left;
     line-height: 2em;
@@ -25,14 +25,14 @@ body {
     left: 10px;
     color: white;
     font-family: monospace;
-    font-size: 2vw;
+    font-size: 16px;
 }
 
 #info {
     position: fixed;
     bottom: 10px;
     left: 10px;
-    font-size: 1vw;
+    font-size: 10px;
     line-height: 1.2em;
 }
 
@@ -54,7 +54,7 @@ body {
     height: 21px;
     color: #639cbd;
     margin-left: 25px;
-    font-size: 1vw;
+    font-size: 10px;
     padding-top: 15px;
 }
 
@@ -127,7 +127,7 @@ b {
 }
 
 .seeMoreButton {
-    font-size: 0.8vw;
+    font-size: 8px;
     cursor: pointer;
     margin-left: 20px;
     position: relative;
