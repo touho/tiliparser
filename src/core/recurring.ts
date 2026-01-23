@@ -75,9 +75,32 @@ export function detectRecurring(
     if (confidence < 0.6) continue;
 
     const amount = sorted[0].amount;
+    const firstDate = sorted[0].date!;
     const lastDate = sorted[sorted.length - 1].date!;
     const nextExpected = new Date(lastDate.getTime());
     nextExpected.setDate(nextExpected.getDate() + Math.round(medianGap));
+
+    const amounts = sorted.map((tx) => tx.amount);
+    const amountMin = Math.min(...amounts);
+    const amountMax = Math.max(...amounts);
+    const avgAbs =
+      amounts.reduce((sum, value) => sum + Math.abs(value), 0) / amounts.length;
+    const amountSpreadPct =
+      avgAbs > 0 ? ((amountMax - amountMin) / avgAbs) * 100 : 0;
+
+    const days = sorted.map((tx) => tx.date!.getDate());
+    const dayOfMonthMin = Math.min(...days);
+    const dayOfMonthMax = Math.max(...days);
+
+    const monthKeys = new Set(
+      sorted.map((tx) => `${tx.date!.getFullYear()}-${tx.date!.getMonth()}`)
+    );
+    const activeMonths = monthKeys.size;
+    const spanMonths =
+      (lastDate.getFullYear() * 12 + lastDate.getMonth()) -
+      (firstDate.getFullYear() * 12 + firstDate.getMonth()) +
+      1;
+    const coveragePct = spanMonths > 0 ? (activeMonths / spanMonths) * 100 : 0;
 
     result.push({
       key,
@@ -87,11 +110,21 @@ export function detectRecurring(
       currency: sorted[0].currency ?? null,
       occurrences: sorted.length,
       dates: sorted.map((tx) => tx.date!),
+      firstDate,
+      lastDate,
+      amountMin,
+      amountMax,
+      amountSpreadPct: Number(amountSpreadPct.toFixed(2)),
+      dayOfMonthMin,
+      dayOfMonthMax,
+      monthKeys: Array.from(monthKeys),
+      activeMonths,
+      spanMonths,
+      coveragePct: Number(coveragePct.toFixed(2)),
       avgGapDays: medianGap,
       frequency,
       confidence: Number(confidence.toFixed(2)),
       totalAmount: sorted.reduce((sum, tx) => sum + tx.amount, 0),
-      lastDate,
       nextExpected,
     });
   }
