@@ -17,6 +17,8 @@
   let transactions: Transaction[] = [];
   let recurring: RecurringGroup[] = [];
   let recurringConfidence = 0.75;
+  let transactionsPrecision: "monthly" | "weekly" = "monthly";
+  let transactionsGroupLimit = 10;
   let totals = { income: 0, spend: 0, net: 0 };
   let spend: Array<{ counterparty: string; total: number; count: number }> = [];
   let income: Array<{ counterparty: string; total: number; count: number }> = [];
@@ -38,6 +40,12 @@
   const topN = 10;
   let recurringChartOptions: EChartsOption | null = null;
   let transactionsChartOptions: EChartsOption | null = null;
+
+  function handleGroupLimitChange(event: Event) {
+    const target = event.target as HTMLSelectElement | null;
+    if (!target) return;
+    transactionsGroupLimit = Number(target.value);
+  }
 
   const transactionColumns = [
     { id: "date", header: { text: "Date" }, width: 110, sort: true },
@@ -287,22 +295,77 @@
     return gradient(top, bottom);
   }
 
-  function buildAxisFromTransactions(txs: Transaction[]): string[] {
+  function getIsoWeek(date: Date): { year: number; week: number } {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return { year: d.getUTCFullYear(), week };
+  }
+
+  function isoWeekStartDate(year: number, week: number): Date {
+    const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+    const day = simple.getUTCDay() || 7;
+    if (day <= 4) {
+      simple.setUTCDate(simple.getUTCDate() - (day - 1));
+    } else {
+      simple.setUTCDate(simple.getUTCDate() + (8 - day));
+    }
+    return new Date(simple.getUTCFullYear(), simple.getUTCMonth(), simple.getUTCDate());
+  }
+
+  function formatWeekLabel(key: string): string {
+    const match = key.match(/^(\d{4})-W(\d{2})$/);
+    if (!match) return key;
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const start = isoWeekStartDate(year, week);
+    return start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  function buildAxisFromTransactions(
+    txs: Transaction[],
+    precision: "monthly" | "weekly"
+  ): string[] {
     const allDates = txs.map((tx) => tx.date).filter((d): d is Date => !!d);
     if (!allDates.length) return [];
-    const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
-    const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
-    const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
     const axis: string[] = [];
-    while (cursor <= end) {
-      axis.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
-      cursor.setMonth(cursor.getMonth() + 1);
+    if (precision === "monthly") {
+      const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
+      const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
+      const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+      while (cursor <= end) {
+        axis.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    } else {
+      const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
+      const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
+      const cursor = new Date(minDate);
+      const day = (cursor.getDay() + 6) % 7;
+      cursor.setDate(cursor.getDate() - day);
+      cursor.setHours(0, 0, 0, 0);
+      const end = new Date(maxDate);
+      const endDay = (end.getDay() + 6) % 7;
+      end.setDate(end.getDate() - endDay);
+      end.setHours(0, 0, 0, 0);
+      while (cursor <= end) {
+        const { year, week } = getIsoWeek(cursor);
+        axis.push(`${year}-W${String(week).padStart(2, "0")}`);
+        cursor.setDate(cursor.getDate() + 7);
+      }
     }
     return axis;
   }
 
-  function buildTransactionsSeries(txs: Transaction[], axis: string[]) {
+  function buildTransactionsSeries(
+    txs: Transaction[],
+    axis: string[],
+    precision: "monthly" | "weekly",
+    limit: number
+  ) {
     const groups = new Map<
       string,
       { name: string; total: number; monthly: Map<string, number> }
@@ -312,7 +375,13 @@
       if (!tx.date) return;
       const name = tx.counterparty ?? "(Unknown)";
       const key = normalizeKey(name) || "(unknown)";
-      const monthKey = `${tx.date.getFullYear()}-${String(tx.date.getMonth() + 1).padStart(2, "0")}`;
+      const monthKey =
+        precision === "monthly"
+          ? `${tx.date.getFullYear()}-${String(tx.date.getMonth() + 1).padStart(2, "0")}`
+          : (() => {
+              const { year, week } = getIsoWeek(tx.date!);
+              return `${year}-W${String(week).padStart(2, "0")}`;
+            })();
       const entry =
         groups.get(key) ?? { name, total: 0, monthly: new Map<string, number>() };
       entry.total += tx.amount;
@@ -321,8 +390,8 @@
     });
 
     const sorted = [...groups.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
-    const top = sorted.slice(0, 8);
-    const rest = sorted.slice(8);
+    const top = sorted.slice(0, limit);
+    const rest = sorted.slice(limit);
 
     const series = top.map((group, idx) => {
       const sign = group.total < 0 ? -1 : 1;
@@ -451,8 +520,13 @@
       }
     : null;
 
-  $: transactionsAxis = buildAxisFromTransactions(filteredTransactions);
-  $: transactionsSeries = buildTransactionsSeries(filteredTransactions, transactionsAxis);
+  $: transactionsAxis = buildAxisFromTransactions(filteredTransactions, transactionsPrecision);
+  $: transactionsSeries = buildTransactionsSeries(
+    filteredTransactions,
+    transactionsAxis,
+    transactionsPrecision,
+    transactionsGroupLimit
+  );
   $: transactionsLegendSelected = Object.fromEntries(
     transactionsSeries.map((series) => [series.name, !hiddenTransactionGroups.has(series.name)])
   );
@@ -501,6 +575,10 @@
             type: "category" as const,
             data: transactionsAxis,
             boundaryGap: false,
+            axisLabel: {
+              formatter: (value: string) =>
+                transactionsPrecision === "weekly" ? formatWeekLabel(value) : value,
+            },
           },
           yAxis: {
             type: "value" as const,
@@ -612,6 +690,20 @@
         <p class="privacy-note">
           All parsing happens locally in your browser. No data leaves your device, and there is no database.
         </p>
+        <a class="repo-link" href="https://github.com/touho/tiliparser" target="_blank" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 2C6.48 2 2 6.58 2 12.26c0 4.5 2.86 8.31 6.84 9.66.5.1.68-.22.68-.49
+              0-.24-.01-.86-.01-1.7-2.78.63-3.37-1.38-3.37-1.38-.46-1.2-1.12-1.52-1.12-1.52-.91-.64.07-.63.07-.63
+              1 .07 1.53 1.05 1.53 1.05.9 1.57 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.16-4.56-5.17
+              0-1.14.39-2.07 1.03-2.8-.1-.26-.45-1.3.1-2.71 0 0 .85-.28 2.78 1.05.8-.23 1.66-.35 2.52-.35.86 0
+              1.72.12 2.52.35 1.93-1.33 2.78-1.05 2.78-1.05.55 1.41.2 2.45.1 2.71.64.73 1.03 1.66 1.03 2.8
+              0 4.02-2.35 4.9-4.58 5.15.36.32.68.95.68 1.92 0 1.38-.01 2.49-.01 2.83 0 .27.18.6.69.49
+              3.98-1.35 6.83-5.16 6.83-9.66C22 6.58 17.52 2 12 2z"
+            />
+          </svg>
+          <span>GitHub</span>
+        </a>
       </div>
       <div class="uploader">
         <label>
@@ -972,6 +1064,15 @@
           step="0.01"
           bind:value={filterMaxAmount}
         />
+        <select bind:value={transactionsPrecision}>
+          <option value="monthly">Monthly</option>
+          <option value="weekly">Weekly</option>
+        </select>
+        <select bind:value={transactionsGroupLimit} on:change={handleGroupLimitChange}>
+          <option value={10}>10</option>
+          <option value={20}>20</option>
+          <option value={40}>40</option>
+        </select>
         <select bind:value={filterRecurringFilter}>
           <option value="all">Any type</option>
           <option value="recurring">Recurring</option>
