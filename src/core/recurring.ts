@@ -12,7 +12,7 @@ const DEFAULT_OPTIONS: Required<RecurringOptions> = {
   amountTolerance: 0.01,
   minOccurrences: 3,
   gapToleranceDays: 3,
-  minConfidence: 0.6,
+  minConfidence: 0.75,
 };
 
 function daysBetween(a: Date, b: Date): number {

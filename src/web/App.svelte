@@ -16,7 +16,7 @@
   let warnings: string[] = [];
   let transactions: Transaction[] = [];
   let recurring: RecurringGroup[] = [];
-  let recurringConfidence = 0.6;
+  let recurringConfidence = 0.75;
   let totals = { income: 0, spend: 0, net: 0 };
   let spend: Array<{ counterparty: string; total: number; count: number }> = [];
   let income: Array<{ counterparty: string; total: number; count: number }> = [];
