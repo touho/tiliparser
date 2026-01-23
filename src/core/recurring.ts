@@ -5,12 +5,14 @@ export type RecurringOptions = {
   amountTolerance?: number;
   minOccurrences?: number;
   gapToleranceDays?: number;
+  minConfidence?: number;
 };
 
 const DEFAULT_OPTIONS: Required<RecurringOptions> = {
   amountTolerance: 0.01,
   minOccurrences: 3,
   gapToleranceDays: 3,
+  minConfidence: 0.6,
 };
 
 function daysBetween(a: Date, b: Date): number {
@@ -46,7 +48,6 @@ export function detectRecurring(
     const key = [
       tx.direction,
       normalizeKey(tx.counterparty),
-      roundAmount(tx.amount, opts.amountTolerance).toFixed(2),
       tx.currency ?? "",
     ].join("|");
 
@@ -67,12 +68,42 @@ export function detectRecurring(
     if (!gaps.length) continue;
 
     const medianGap = median(gaps);
-    const frequency = classifyFrequency(medianGap, opts.gapToleranceDays);
+
+    const monthDates = Array.from(
+      new Map(
+        sorted.map((tx) => [
+          `${tx.date!.getFullYear()}-${tx.date!.getMonth()}`,
+          new Date(tx.date!.getFullYear(), tx.date!.getMonth(), 1),
+        ])
+      ).values()
+    ).sort((a, b) => a.getTime() - b.getTime());
+    const monthGaps: number[] = [];
+    for (let i = 1; i < monthDates.length; i += 1) {
+      monthGaps.push(daysBetween(monthDates[i - 1], monthDates[i]));
+    }
+    const medianMonthGap = monthGaps.length ? median(monthGaps) : null;
+
+    let frequency = classifyFrequency(medianGap, opts.gapToleranceDays);
+    let gapsForConfidence = gaps;
+    let medianForConfidence = medianGap;
+
+    if (medianMonthGap !== null) {
+      const monthFrequency = classifyFrequency(medianMonthGap, opts.gapToleranceDays);
+      const isMonthlyCadence =
+        monthFrequency === "monthly" || monthFrequency === "quarterly" || monthFrequency === "yearly";
+      if (isMonthlyCadence && (medianGap >= 20 || !frequency)) {
+        frequency = monthFrequency;
+        gapsForConfidence = monthGaps;
+        medianForConfidence = medianMonthGap;
+      }
+    }
+
     if (!frequency) continue;
 
-    const consistent = gaps.filter((gap) => Math.abs(gap - medianGap) <= opts.gapToleranceDays);
-    const confidence = consistent.length / gaps.length;
-    if (confidence < 0.6) continue;
+    const consistent = gapsForConfidence.filter(
+      (gap) => Math.abs(gap - medianForConfidence) <= opts.gapToleranceDays
+    );
+    const baseConfidence = consistent.length / gapsForConfidence.length;
 
     const amount = sorted[0].amount;
     const firstDate = sorted[0].date!;
@@ -101,6 +132,11 @@ export function detectRecurring(
       (firstDate.getFullYear() * 12 + firstDate.getMonth()) +
       1;
     const coveragePct = spanMonths > 0 ? (activeMonths / spanMonths) * 100 : 0;
+
+    const amountPenalty = Math.min(0.15, (amountSpreadPct / 100) * 0.15);
+    const coveragePenalty = Math.min(0.1, (1 - coveragePct / 100) * 0.1);
+    const confidence = Math.max(0, baseConfidence - amountPenalty - coveragePenalty);
+    if (confidence < opts.minConfidence) continue;
 
     result.push({
       key,

@@ -16,6 +16,7 @@
   let warnings: string[] = [];
   let transactions: Transaction[] = [];
   let recurring: RecurringGroup[] = [];
+  let recurringConfidence = 0.6;
   let totals = { income: 0, spend: 0, net: 0 };
   let spend: Array<{ counterparty: string; total: number; count: number }> = [];
   let income: Array<{ counterparty: string; total: number; count: number }> = [];
@@ -29,11 +30,14 @@
   let filterDirection: "all" | "in" | "out" = "all";
   let filterMinAmount = "";
   let filterMaxAmount = "";
-  let filterRecurringOnly = false;
+  let filterRecurringFilter: "all" | "recurring" | "non-recurring" = "all";
   let selectedRecurringKey: string | null = null;
   let hiddenRecurringKeys = new Set<string>();
+  let hiddenTransactionGroups = new Set<string>();
+  let selectedTransactionSeriesName = "";
   const topN = 10;
   let recurringChartOptions: EChartsOption | null = null;
+  let transactionsChartOptions: EChartsOption | null = null;
 
   const transactionColumns = [
     { id: "date", header: { text: "Date" }, width: 110, sort: true },
@@ -71,7 +75,6 @@
     return [
       tx.direction,
       normalizeKey(tx.counterparty ?? ""),
-      roundAmount(tx.amount, 0.01).toFixed(2),
       tx.currency ?? "",
     ].join("|");
   }
@@ -80,7 +83,7 @@
     const direction = filterDirection;
     const min = filterMinAmount ? Number(filterMinAmount) : null;
     const max = filterMaxAmount ? Number(filterMaxAmount) : null;
-    const recurringOnly = filterRecurringOnly;
+    const recurringFilter = filterRecurringFilter;
     const needle = filterSearch.trim().toLowerCase();
     const keySet = recurringKeySet;
 
@@ -88,7 +91,8 @@
       if (direction !== "all" && tx.direction !== direction) return false;
       if (min !== null && !Number.isNaN(min) && Math.abs(tx.amount) < min) return false;
       if (max !== null && !Number.isNaN(max) && Math.abs(tx.amount) > max) return false;
-      if (recurringOnly && !keySet.has(getRecurringKey(tx))) return false;
+      if (recurringFilter === "recurring" && !keySet.has(getRecurringKey(tx))) return false;
+      if (recurringFilter === "non-recurring" && keySet.has(getRecurringKey(tx))) return false;
       if (needle) {
         const hay = [
           tx.counterparty,
@@ -177,6 +181,21 @@
     hiddenRecurringKeys = next;
   }
 
+  function toggleRecurringVisibilityByKey(key: string) {
+    const isVisible = !hiddenRecurringKeys.has(key);
+    setRecurringVisibility(key, !isVisible);
+  }
+
+  function toggleTransactionVisibilityByName(name: string) {
+    const next = new Set(hiddenTransactionGroups);
+    if (next.has(name)) {
+      next.delete(name);
+    } else {
+      next.add(name);
+    }
+    hiddenTransactionGroups = next;
+  }
+
   $: selectedRecurring = recurring.find((group) => group.key === selectedRecurringKey) ?? null;
 
   $: selectedRecurringTxs = selectedRecurring
@@ -185,7 +204,9 @@
         .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
     : [];
 
-  $: chartRecurring = recurring.slice(0, 8);
+  $: chartRecurring = [...recurring]
+    .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount))
+    .slice(0, 20);
   $: legendSelected = Object.fromEntries(
     chartRecurring.map((group) => [group.counterparty, !hiddenRecurringKeys.has(group.key)])
   );
@@ -223,13 +244,20 @@
     return axis;
   }
 
-  function sumByMonth(group: RecurringGroup, axis: string[]): number[] {
+  function sumByMonth(group: RecurringGroup, axis: string[], txs: Transaction[]): number[] {
     const sums = new Map<string, number>();
-    group.dates.forEach((date) => {
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      sums.set(key, (sums.get(key) ?? 0) + group.amount);
+    txs
+      .filter((tx) => getRecurringKey(tx) === group.key)
+      .forEach((tx) => {
+        if (!tx.date) return;
+        const key = `${tx.date.getFullYear()}-${String(tx.date.getMonth() + 1).padStart(2, "0")}`;
+        sums.set(key, (sums.get(key) ?? 0) + tx.amount);
+      });
+    const seriesSign = group.totalAmount < 0 ? -1 : 1;
+    return axis.map((key) => {
+      const value = sums.get(key) ?? 0;
+      return Math.abs(value) < 0.01 ? seriesSign * 0.0001 : value;
     });
-    return axis.map((key) => sums.get(key) ?? 0);
   }
 
   function gradient(from: string, to: string) {
@@ -241,21 +269,119 @@
 
   $: monthAxis = buildMonthAxis(recurring, transactions);
 
-  const chartColors = [
-    "#80FFA5",
-    "#00DDFF",
-    "#37A2FF",
-    "#FF0087",
-    "#FFBF00",
-  ];
+  const baseHues = [140, 195, 210, 320, 45, 270, 5, 90];
 
-  const gradientStops: Array<[string, string]> = [
-    ["rgb(128, 255, 165)", "rgb(1, 191, 236)"],
-    ["rgb(0, 221, 255)", "rgb(77, 119, 255)"],
-    ["rgb(55, 162, 255)", "rgb(116, 21, 219)"],
-    ["rgb(255, 0, 135)", "rgb(135, 0, 157)"],
-    ["rgb(255, 191, 0)", "rgb(224, 62, 76)"],
-  ];
+  function seriesColor(idx: number) {
+    const hue = baseHues[idx % baseHues.length];
+    const shift = Math.floor(idx / baseHues.length) * 17;
+    const value = (hue + shift) % 360;
+    return `hsl(${value}, 85%, 55%)`;
+  }
+
+  function seriesGradient(idx: number) {
+    const hue = baseHues[idx % baseHues.length];
+    const shift = Math.floor(idx / baseHues.length) * 17;
+    const base = (hue + shift) % 360;
+    const top = `hsl(${base}, 85%, 70%)`;
+    const bottom = `hsl(${(base + 18) % 360}, 85%, 42%)`;
+    return gradient(top, bottom);
+  }
+
+  function buildAxisFromTransactions(txs: Transaction[]): string[] {
+    const allDates = txs.map((tx) => tx.date).filter((d): d is Date => !!d);
+    if (!allDates.length) return [];
+    const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
+    const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    const axis: string[] = [];
+    while (cursor <= end) {
+      axis.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return axis;
+  }
+
+  function buildTransactionsSeries(txs: Transaction[], axis: string[]) {
+    const groups = new Map<
+      string,
+      { name: string; total: number; monthly: Map<string, number> }
+    >();
+
+    txs.forEach((tx) => {
+      if (!tx.date) return;
+      const name = tx.counterparty ?? "(Unknown)";
+      const key = normalizeKey(name) || "(unknown)";
+      const monthKey = `${tx.date.getFullYear()}-${String(tx.date.getMonth() + 1).padStart(2, "0")}`;
+      const entry =
+        groups.get(key) ?? { name, total: 0, monthly: new Map<string, number>() };
+      entry.total += tx.amount;
+      entry.monthly.set(monthKey, (entry.monthly.get(monthKey) ?? 0) + tx.amount);
+      groups.set(key, entry);
+    });
+
+    const sorted = [...groups.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+    const top = sorted.slice(0, 8);
+    const rest = sorted.slice(8);
+
+    const series = top.map((group, idx) => {
+      const sign = group.total < 0 ? -1 : 1;
+      return {
+        id: group.name,
+        name: group.name,
+        type: "line" as const,
+        stack: "total",
+        smooth: true,
+        showSymbol: false,
+        triggerLineEvent: true,
+        lineStyle: { width: 0 },
+        itemStyle: { color: seriesColor(idx) },
+        areaStyle: {
+          opacity: 0.9,
+          color: seriesGradient(idx),
+        },
+        emphasis: { focus: "series" },
+        data: axis.map((key) => {
+          const value = group.monthly.get(key) ?? 0;
+          return Math.abs(value) < 0.01 ? sign * 0.0001 : value;
+        }),
+      };
+    });
+
+    if (rest.length) {
+      const monthly = new Map<string, number>();
+      let total = 0;
+      rest.forEach((group) => {
+        total += group.total;
+        group.monthly.forEach((value, key) => {
+          monthly.set(key, (monthly.get(key) ?? 0) + value);
+        });
+      });
+      const sign = total < 0 ? -1 : 1;
+      series.push({
+        id: "Other",
+        name: "Other",
+        type: "line" as const,
+        stack: "total",
+        smooth: true,
+        showSymbol: false,
+        triggerLineEvent: true,
+        lineStyle: { width: 0 },
+        itemStyle: { color: seriesColor(9) },
+        areaStyle: {
+          opacity: 0.9,
+          color: seriesGradient(9),
+        },
+        emphasis: { focus: "series" },
+        data: axis.map((key) => {
+          const value = monthly.get(key) ?? 0;
+          return Math.abs(value) < 0.01 ? sign * 0.0001 : value;
+        }),
+      });
+    }
+
+    return series;
+  }
 
   $: recurringChartOptions = recurring.length && monthAxis.length
     ? {
@@ -314,15 +440,74 @@
           showSymbol: false,
           triggerLineEvent: true,
           lineStyle: { width: 0 },
+          itemStyle: { color: seriesColor(idx) },
           areaStyle: {
             opacity: 0.9,
-            color: gradient(...gradientStops[idx % gradientStops.length]),
+            color: seriesGradient(idx),
           },
           emphasis: { focus: "series" },
-          data: sumByMonth(group, monthAxis),
+          data: sumByMonth(group, monthAxis, transactions),
         })),
       }
     : null;
+
+  $: transactionsAxis = buildAxisFromTransactions(filteredTransactions);
+  $: transactionsSeries = buildTransactionsSeries(filteredTransactions, transactionsAxis);
+  $: transactionsLegendSelected = Object.fromEntries(
+    transactionsSeries.map((series) => [series.name, !hiddenTransactionGroups.has(series.name)])
+  );
+  $: transactionsChartOptions =
+    transactionsAxis.length && transactionsSeries.length
+      ? {
+          tooltip: {
+            trigger: "axis",
+            axisPointer: {
+              type: "cross",
+              label: { backgroundColor: "#6a7985" },
+            },
+            formatter: (params: unknown) => {
+              if (!Array.isArray(params)) return "";
+              const rows = params
+                .filter((item) => item && typeof item === "object")
+                .map((item) => {
+                  const dataItem = item as {
+                    seriesName?: string;
+                    marker?: string;
+                    value?: number | string;
+                  };
+                  const label = dataItem.seriesName ?? "Unknown";
+                  const value =
+                    typeof dataItem.value === "number"
+                      ? dataItem.value.toFixed(2)
+                      : dataItem.value ?? "";
+                  return `${dataItem.marker ?? ""} ${label}: ${value}`;
+                });
+              return rows.join("<br/>");
+            },
+          },
+          legend: {
+            type: "scroll",
+            top: 0,
+            textStyle: { color: "#5b5f66" },
+            selected: transactionsLegendSelected,
+          },
+          grid: {
+            left: 40,
+            right: 20,
+            top: 40,
+            bottom: 30,
+          },
+          xAxis: {
+            type: "category" as const,
+            data: transactionsAxis,
+            boundaryGap: false,
+          },
+          yAxis: {
+            type: "value" as const,
+          },
+          series: transactionsSeries,
+        }
+      : null;
 
   $: topRecurring = [...recurring]
     .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount))
@@ -332,6 +517,10 @@
     .filter((tx) => tx.direction === "out" && !recurringKeySet.has(getRecurringKey(tx)))
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
     .slice(0, topN);
+
+  $: if (transactions.length) {
+    recurring = detectRecurring(transactions, { minConfidence: recurringConfidence });
+  }
 
   async function handleFileChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
@@ -352,7 +541,7 @@
     spend = split.spend;
     income = split.income;
 
-    recurring = detectRecurring(transactions);
+    recurring = detectRecurring(transactions, { minConfidence: recurringConfidence });
   }
 
 
@@ -377,7 +566,7 @@
       spend = split.spend;
       income = split.income;
 
-      recurring = detectRecurring(transactions);
+      recurring = detectRecurring(transactions, { minConfidence: recurringConfidence });
       localStorage.setItem(sampleStorageKey, selectedSample);
     } catch (err) {
       loadError = err instanceof Error ? err.message : "Failed to load sample";
@@ -445,7 +634,6 @@
                 {/if}
               </select>
               <button on:click={loadSample} disabled={!selectedSample}>Load</button>
-              <button class="ghost" on:click={refreshSamples}>Refresh</button>
             </div>
             {#if sampleError}
               <small class="helper">{sampleError}</small>
@@ -507,6 +695,21 @@
             <h2>Recurring payments</h2>
             <p class="subtle">All recurring activity stacked across time.</p>
           </div>
+          <div class="recurring-control">
+            <label>
+              <span>Min confidence</span>
+              <div class="slider-row">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1"
+                  step="0.01"
+                  bind:value={recurringConfidence}
+                />
+                <strong>{recurringConfidence.toFixed(2)}</strong>
+              </div>
+            </label>
+          </div>
         </div>
         <div class="recurring-chart full">
           {#if recurringChartOptions}
@@ -524,6 +727,18 @@
                 } else if (seriesName) {
                   const match = recurring.find((group) => group.counterparty === seriesName);
                   selectRecurringByKey(match?.key ?? null);
+                }
+              }}
+              ondblclick={(params) => {
+                const seriesId =
+                  params && typeof params === "object" ? (params as { seriesId?: string }).seriesId : "";
+                const seriesName =
+                  params && typeof params === "object" ? (params as { seriesName?: string }).seriesName : "";
+                if (seriesId) {
+                  toggleRecurringVisibilityByKey(seriesId);
+                } else if (seriesName) {
+                  const match = recurring.find((group) => group.counterparty === seriesName);
+                  if (match) toggleRecurringVisibilityByKey(match.key);
                 }
               }}
               onlegendselectchanged={(event) => {
@@ -553,7 +768,7 @@
         </div>
         {#if selectedRecurring}
           <div class="recurring-summary">
-            <div>
+            <div class="recurring-counterparty">
               <span>Counterparty</span>
               <strong>{selectedRecurring.counterparty}</strong>
             </div>
@@ -611,7 +826,7 @@
               <tbody>
                 {#each selectedRecurringTxs as tx}
                   <tr>
-                    <td>{formatDate(tx.date, tx.rawDate)}</td>
+                    <td class="nowrap">{formatDate(tx.date, tx.rawDate)}</td>
                     <td>{tx.amount.toFixed(2)}</td>
                     <td>{tx.title ?? ""}</td>
                     <td>{tx.message ?? ""}</td>
@@ -739,7 +954,7 @@
           bind:value={filterSearch}
         />
         <select bind:value={filterDirection}>
-          <option value="all">All</option>
+          <option value="all">Any direction</option>
           <option value="out">Spend</option>
           <option value="in">Income</option>
         </select>
@@ -757,10 +972,51 @@
           step="0.01"
           bind:value={filterMaxAmount}
         />
-        <label class="toggle">
-          <input type="checkbox" bind:checked={filterRecurringOnly} />
-          <span>Recurring only</span>
-        </label>
+        <select bind:value={filterRecurringFilter}>
+          <option value="all">Any type</option>
+          <option value="recurring">Recurring</option>
+          <option value="non-recurring">Non-recurring</option>
+        </select>
+      </div>
+      {#if selectedTransactionSeriesName}
+        <div class="chart-selected">
+          Selected series: {selectedTransactionSeriesName}
+        </div>
+      {/if}
+      <div class="transactions-chart">
+        {#if transactionsChartOptions}
+          <Chart
+            init={echarts.init}
+            options={transactionsChartOptions}
+            style="width: 100%; height: 100%;"
+            onclick={(params) => {
+              const seriesName =
+                params && typeof params === "object" ? (params as { seriesName?: string }).seriesName : "";
+              selectedTransactionSeriesName = seriesName ?? "";
+            }}
+            ondblclick={(params) => {
+              const seriesName =
+                params && typeof params === "object" ? (params as { seriesName?: string }).seriesName : "";
+              if (seriesName) {
+                toggleTransactionVisibilityByName(seriesName);
+              }
+            }}
+            onlegendselectchanged={(event) => {
+              const selected =
+                event && typeof event === "object" ? (event as { selected?: Record<string, boolean> }).selected : null;
+              if (!selected) return;
+              const next = new Set<string>();
+              transactionsSeries.forEach((series) => {
+                if (selected[series.name] === false) {
+                  next.add(series.name);
+                }
+              });
+              hiddenTransactionGroups = next;
+            }}
+          />
+        {:else}
+          <p class="subtle">No transactions to chart.</p>
+        {/if}
       </div>
       <Grid columns={transactionColumns} data={transactionRows} />
     </section>
