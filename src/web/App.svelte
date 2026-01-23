@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { Grid } from "@svar-ui/svelte-grid";
   import { Willow } from "@svar-ui/svelte-core";
   import { parseTransactions } from "../parsers";
@@ -14,6 +15,11 @@
   let totals = { income: 0, spend: 0, net: 0 };
   let spend: Array<{ counterparty: string; total: number; count: number }> = [];
   let income: Array<{ counterparty: string; total: number; count: number }> = [];
+  let loadError = "";
+  let sampleFiles: string[] = [];
+  let selectedSample = "";
+  let sampleError = "";
+  const sampleStorageKey = "tiliparser.lastSample";
 
   const transactionColumns = [
     { id: "date", header: { text: "Date", filter: "text" }, width: 110 },
@@ -65,6 +71,7 @@
     if (!file) return;
 
     fileName = file.name;
+    loadError = "";
     const text = await file.text();
     const parsed = parseTransactions(bank, text);
 
@@ -79,6 +86,61 @@
 
     recurring = detectRecurring(transactions);
   }
+
+
+  async function loadSample() {
+    if (!selectedSample) return;
+    loadError = "";
+    try {
+      const response = await fetch(`/__samples/${encodeURIComponent(selectedSample)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load (${response.status})`);
+      }
+      const text = await response.text();
+      fileName = selectedSample;
+      const parsed = parseTransactions(bank, text);
+
+      transactions = parsed.transactions;
+      warnings = parsed.warnings;
+
+      totals = summarizeTotals(transactions);
+      const summaries = summarizeCounterparties(transactions);
+      const split = splitSpendIncome(summaries);
+      spend = split.spend;
+      income = split.income;
+
+      recurring = detectRecurring(transactions);
+      localStorage.setItem(sampleStorageKey, selectedSample);
+    } catch (err) {
+      loadError = err instanceof Error ? err.message : "Failed to load sample";
+    }
+  }
+
+  async function refreshSamples() {
+    sampleError = "";
+    try {
+      const response = await fetch("/__samples/");
+      if (!response.ok) {
+        sampleError = `Failed to load samples (${response.status})`;
+        return;
+      }
+      const files = (await response.json()) as string[];
+      sampleFiles = files;
+      const last = localStorage.getItem(sampleStorageKey);
+      if (last && files.includes(last)) {
+        selectedSample = last;
+      } else if (!selectedSample && files.length) {
+        selectedSample = files[0];
+      }
+      if (!files.length) {
+        sampleError = "No CSV files found in /samples";
+      }
+    } catch {
+      sampleError = "Sample endpoint not available (dev server only)";
+    }
+  }
+
+  onMount(refreshSamples);
 </script>
 
 <Willow>
@@ -94,6 +156,25 @@
           <select bind:value={bank}>
             <option value="nordea">Nordea</option>
           </select>
+        </label>
+        <label>
+          <span>Load sample (dev only)</span>
+          <div class="server-load">
+            <select bind:value={selectedSample} disabled={!sampleFiles.length}>
+              {#if !sampleFiles.length}
+                <option value="">No samples found</option>
+              {:else}
+                {#each sampleFiles as sample}
+                  <option value={sample}>{sample}</option>
+                {/each}
+              {/if}
+            </select>
+            <button on:click={loadSample} disabled={!selectedSample}>Load</button>
+            <button class="ghost" on:click={refreshSamples}>Refresh</button>
+          </div>
+          {#if sampleError}
+            <small class="helper">{sampleError}</small>
+          {/if}
         </label>
         <label class="file">
           <span>{fileName || "Choose CSV"}</span>
@@ -129,6 +210,13 @@
             <li>{warning}</li>
           {/each}
         </ul>
+      </section>
+    {/if}
+
+    {#if loadError}
+      <section class="warnings">
+        <strong>Load error</strong>
+        <p>{loadError}</p>
       </section>
     {/if}
 

@@ -71,6 +71,48 @@ select,
   font-size: 0.9rem;
 }
 
+.server-load {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+}
+
+.server-load select {
+  border: 1px solid #c9c2bb;
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.server-load button {
+  border: none;
+  border-radius: 12px;
+  padding: 0.6rem 1rem;
+  background: #1f2328;
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.server-load button:hover {
+  background: #2b3036;
+}
+
+.server-load button.ghost {
+  background: #e9e3de;
+  color: #1f2328;
+}
+
+.server-load button.ghost:hover {
+  background: #dbd4ce;
+}
+
+.helper {
+  font-size: 0.75rem;
+  color: #8a7f77;
+}
+
 .file {
   position: relative;
   overflow: hidden;
