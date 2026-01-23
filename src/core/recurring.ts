@@ -41,6 +41,16 @@ export function detectRecurring(
   options: RecurringOptions = {}
 ): RecurringGroup[] {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  const dated = transactions.filter((tx) => !!tx.date);
+  const datasetSorted = [...dated].sort((a, b) => a.date!.getTime() - b.date!.getTime());
+  const datasetFirst = datasetSorted[0]?.date ?? null;
+  const datasetLast = datasetSorted[datasetSorted.length - 1]?.date ?? null;
+  const datasetSpanMonths =
+    datasetFirst && datasetLast
+      ? (datasetLast.getFullYear() * 12 + datasetLast.getMonth()) -
+          (datasetFirst.getFullYear() * 12 + datasetFirst.getMonth()) +
+        1
+      : 0;
   const groups = new Map<string, Transaction[]>();
 
   for (const tx of transactions) {
@@ -103,7 +113,7 @@ export function detectRecurring(
     const consistent = gapsForConfidence.filter(
       (gap) => Math.abs(gap - medianForConfidence) <= opts.gapToleranceDays
     );
-    const baseConfidence = consistent.length / gapsForConfidence.length;
+    const gapConsistency = consistent.length / gapsForConfidence.length;
 
     const amount = sorted[0].amount;
     const firstDate = sorted[0].date!;
@@ -118,6 +128,12 @@ export function detectRecurring(
       amounts.reduce((sum, value) => sum + Math.abs(value), 0) / amounts.length;
     const amountSpreadPct =
       avgAbs > 0 ? ((amountMax - amountMin) / avgAbs) * 100 : 0;
+    const medianAmount = median(amounts.map((value) => Math.abs(value)));
+    const avgAbsDeviation =
+      amounts.reduce((sum, value) => sum + Math.abs(Math.abs(value) - medianAmount), 0) /
+      amounts.length;
+    const avgAbsDeviationPct =
+      medianAmount > 0 ? (avgAbsDeviation / medianAmount) * 100 : 0;
 
     const days = sorted.map((tx) => tx.date!.getDate());
     const dayOfMonthMin = Math.min(...days);
@@ -132,10 +148,52 @@ export function detectRecurring(
       (firstDate.getFullYear() * 12 + firstDate.getMonth()) +
       1;
     const coveragePct = spanMonths > 0 ? (activeMonths / spanMonths) * 100 : 0;
+    const globalCoveragePct =
+      datasetSpanMonths > 0 ? (activeMonths / datasetSpanMonths) * 100 : 0;
 
-    const amountPenalty = Math.min(0.15, (amountSpreadPct / 100) * 0.15);
-    const coveragePenalty = Math.min(0.1, (1 - coveragePct / 100) * 0.1);
-    const confidence = Math.max(0, baseConfidence - amountPenalty - coveragePenalty);
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(max, Math.max(min, value));
+
+    const amountScore = (() => {
+      if (!avgAbs) return 0;
+      const spread = avgAbsDeviationPct;
+      if (spread <= 1) return 1;
+      if (spread >= 80) return 0;
+      return clamp(1 - (spread - 1) / (80 - 1), 0, 1);
+    })();
+
+    const dayRange = dayOfMonthMax - dayOfMonthMin;
+    const dayScore = (() => {
+      if (dayRange <= 3) return 1;
+      if (dayRange >= 10) return 0;
+      return clamp(1 - (dayRange - 3) / (10 - 3), 0, 1);
+    })();
+
+    const timeScore = 0.9 * gapConsistency + 0.1 * dayScore;
+
+    const distributionScore = (() => {
+      if (coveragePct >= 90) return 1;
+      if (coveragePct <= 40) return 0;
+      return clamp((coveragePct - 40) / (90 - 40), 0, 1);
+    })();
+
+    const globalDistributionScore = (() => {
+      if (globalCoveragePct >= 90) return 1;
+      if (globalCoveragePct <= 40) return 0;
+      return clamp((globalCoveragePct - 40) / (90 - 40), 0, 1);
+    })();
+
+    const confidence =
+      sorted.length <= 1
+        ? 0
+        : clamp(
+            0.2 * amountScore +
+              0.35 * timeScore +
+              0.25 * distributionScore +
+              0.2 * globalDistributionScore,
+            0,
+            1
+          );
     if (confidence < opts.minConfidence) continue;
 
     result.push({
