@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { Chart } from "svelte-echarts";
   import * as echarts from "echarts";
+  import type { EChartsOption } from "echarts";
   import { Grid } from "@svar-ui/svelte-grid";
   import { Willow } from "@svar-ui/svelte-core";
   import { parseTransactions } from "../parsers";
@@ -29,16 +30,19 @@
   let filterMinAmount = "";
   let filterMaxAmount = "";
   let filterRecurringOnly = false;
+  let selectedRecurringKey: string | null = null;
+  let hiddenRecurringKeys = new Set<string>();
   const topN = 10;
+  let recurringChartOptions: EChartsOption | null = null;
 
   const transactionColumns = [
-    { id: "date", header: { text: "Date" }, width: 110 },
-    { id: "amount", header: { text: "Amount" }, width: 110 },
-    { id: "direction", header: { text: "Dir" }, width: 70 },
-    { id: "counterparty", header: { text: "Counterparty" }, width: 220 },
-    { id: "title", header: { text: "Title" }, width: 220 },
-    { id: "message", header: { text: "Message" }, width: 220 },
-    { id: "reference", header: { text: "Reference" }, width: 150 },
+    { id: "date", header: { text: "Date" }, width: 110, sort: true },
+    { id: "amount", header: { text: "Amount" }, width: 110, sort: true },
+    { id: "direction", header: { text: "Dir" }, width: 70, sort: true },
+    { id: "counterparty", header: { text: "Counterparty" }, width: 220, sort: true },
+    { id: "title", header: { text: "Title" }, width: 220, sort: true },
+    { id: "message", header: { text: "Message" }, width: 220, sort: true },
+    { id: "reference", header: { text: "Reference" }, width: 150, sort: true },
   ];
 
   const recurringColumns = [
@@ -159,12 +163,39 @@
     nextExpected: group.nextExpected.toISOString().slice(0, 10),
   }));
 
+  function selectRecurringByKey(key: string | null) {
+    selectedRecurringKey = key;
+  }
+
+  function setRecurringVisibility(key: string, visible: boolean) {
+    const next = new Set(hiddenRecurringKeys);
+    if (visible) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    hiddenRecurringKeys = next;
+  }
+
+  $: selectedRecurring = recurring.find((group) => group.key === selectedRecurringKey) ?? null;
+
+  $: selectedRecurringTxs = selectedRecurring
+    ? transactions
+        .filter((tx) => getRecurringKey(tx) === selectedRecurring.key)
+        .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
+    : [];
+
+  $: chartRecurring = recurring.slice(0, 8);
+  $: legendSelected = Object.fromEntries(
+    chartRecurring.map((group) => [group.counterparty, !hiddenRecurringKeys.has(group.key)])
+  );
+
   function toIsoDate(date: Date) {
     return date.toISOString().slice(0, 10);
   }
 
-  function buildMonthAxis(): string[] {
-    const allRecurringDates = recurring.flatMap((group) => group.dates);
+  function buildMonthAxis(recurringGroups: RecurringGroup[], txs: Transaction[]): string[] {
+    const allRecurringDates = recurringGroups.flatMap((group) => group.dates);
     if (allRecurringDates.length) {
       const minDate = new Date(Math.min(...allRecurringDates.map((d) => d.getTime())));
       const maxDate = new Date(Math.max(...allRecurringDates.map((d) => d.getTime())));
@@ -178,7 +209,7 @@
       return axis;
     }
 
-    const allDates = transactions.map((tx) => tx.date).filter((d): d is Date => !!d);
+    const allDates = txs.map((tx) => tx.date).filter((d): d is Date => !!d);
     if (!allDates.length) return [];
     const minDate = new Date(Math.min(...allDates.map((d) => d.getTime())));
     const maxDate = new Date(Math.max(...allDates.map((d) => d.getTime())));
@@ -201,32 +232,65 @@
     return axis.map((key) => sums.get(key) ?? 0);
   }
 
-  function gradient(color: string) {
+  function gradient(from: string, to: string) {
     return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-      { offset: 0, color },
-      { offset: 1, color: "rgba(255,255,255,0.0)" },
+      { offset: 0, color: from },
+      { offset: 1, color: to },
     ]);
   }
 
-  $: monthAxis = buildMonthAxis();
+  $: monthAxis = buildMonthAxis(recurring, transactions);
 
   const chartColors = [
-    "#1f2328",
-    "#9c7f64",
-    "#4d7c6b",
-    "#b85c5c",
-    "#6b78a5",
-    "#e07a5f",
-    "#3d405b",
-    "#81b29a",
+    "#80FFA5",
+    "#00DDFF",
+    "#37A2FF",
+    "#FF0087",
+    "#FFBF00",
+  ];
+
+  const gradientStops: Array<[string, string]> = [
+    ["rgb(128, 255, 165)", "rgb(1, 191, 236)"],
+    ["rgb(0, 221, 255)", "rgb(77, 119, 255)"],
+    ["rgb(55, 162, 255)", "rgb(116, 21, 219)"],
+    ["rgb(255, 0, 135)", "rgb(135, 0, 157)"],
+    ["rgb(255, 191, 0)", "rgb(224, 62, 76)"],
   ];
 
   $: recurringChartOptions = recurring.length && monthAxis.length
     ? {
         tooltip: {
           trigger: "axis",
+          axisPointer: {
+            type: "cross",
+            label: { backgroundColor: "#6a7985" },
+          },
+          formatter: (params: unknown) => {
+            if (!Array.isArray(params)) return "";
+            const rows = params
+              .filter((item) => item && typeof item === "object")
+              .map((item) => {
+                const dataItem = item as {
+                  seriesName?: string;
+                  marker?: string;
+                  value?: number | string;
+                };
+                const label = dataItem.seriesName ?? "Unknown";
+                const value =
+                  typeof dataItem.value === "number"
+                    ? dataItem.value.toFixed(2)
+                    : dataItem.value ?? "";
+                return `${dataItem.marker ?? ""} ${label}: ${value}`;
+              });
+            return rows.join("<br/>");
+          },
         },
-        legend: { type: "scroll", top: 0, textStyle: { color: "#5b5f66" } },
+        legend: {
+          type: "scroll",
+          top: 0,
+          textStyle: { color: "#5b5f66" },
+          selected: legendSelected,
+        },
         grid: {
           left: 40,
           right: 20,
@@ -234,23 +298,25 @@
           bottom: 30,
         },
         xAxis: {
-          type: "category",
+          type: "category" as const,
           data: monthAxis,
           boundaryGap: false,
         },
         yAxis: {
-          type: "value",
+          type: "value" as const,
         },
-        series: recurring.slice(0, 8).map((group, idx) => ({
+        series: chartRecurring.map((group, idx) => ({
+          id: group.key,
           name: group.counterparty,
-          type: "line",
+          type: "line" as const,
           stack: "total",
           smooth: true,
           showSymbol: false,
+          triggerLineEvent: true,
           lineStyle: { width: 0 },
           areaStyle: {
             opacity: 0.9,
-            color: gradient(chartColors[idx % chartColors.length]),
+            color: gradient(...gradientStops[idx % gradientStops.length]),
           },
           emphasis: { focus: "series" },
           data: sumByMonth(group, monthAxis),
@@ -448,44 +514,216 @@
               init={echarts.init}
               options={recurringChartOptions}
               style="width: 100%; height: 100%;"
+              onclick={(params) => {
+                const seriesId =
+                  params && typeof params === "object" ? (params as { seriesId?: string }).seriesId : "";
+                const seriesName =
+                  params && typeof params === "object" ? (params as { seriesName?: string }).seriesName : "";
+                if (seriesId) {
+                  selectRecurringByKey(seriesId);
+                } else if (seriesName) {
+                  const match = recurring.find((group) => group.counterparty === seriesName);
+                  selectRecurringByKey(match?.key ?? null);
+                }
+              }}
+              onlegendselectchanged={(event) => {
+                const selected =
+                  event && typeof event === "object" ? (event as { selected?: Record<string, boolean> }).selected : null;
+                if (!selected) return;
+                const next = new Set<string>();
+                chartRecurring.forEach((group) => {
+                  if (selected[group.counterparty] === false) {
+                    next.add(group.key);
+                  }
+                });
+                hiddenRecurringKeys = next;
+              }}
             />
           {:else}
             <p class="subtle">No recurring data to chart yet.</p>
           {/if}
         </div>
       </div>
-      <div class="side-panel">
-        <div class="panel-block">
-          <h2>Top recurring counterparties</h2>
-          <ol>
-            {#each topRecurring as row}
-              <li>{row.counterparty} — {row.totalAmount.toFixed(2)} ({row.frequency})</li>
-            {/each}
-          </ol>
+      <div class="panel-block selected-panel">
+        <div class="panel-head">
+          <h2>Selected recurring payment</h2>
+          {#if selectedRecurring}
+            <button class="ghost tiny" on:click={() => selectRecurringByKey(null)}>Clear</button>
+          {/if}
         </div>
-        <div class="panel-block">
-          <h2>Top spend</h2>
-          <ol>
-            {#each spend.slice(0, topN) as row}
-              <li>{row.counterparty} — {row.total.toFixed(2)} ({row.count})</li>
-            {/each}
-          </ol>
+        {#if selectedRecurring}
+          <div class="recurring-summary">
+            <div>
+              <span>Counterparty</span>
+              <strong>{selectedRecurring.counterparty}</strong>
+            </div>
+            <div>
+              <span>Frequency</span>
+              <strong>{selectedRecurring.frequency}</strong>
+            </div>
+            <div>
+              <span>Amount</span>
+              <strong>{selectedRecurring.amount.toFixed(2)}</strong>
+            </div>
+            <div>
+              <span>Occurrences</span>
+              <strong>{selectedRecurring.occurrences}</strong>
+            </div>
+            <div>
+              <span>Coverage</span>
+              <strong>{formatCoverage(selectedRecurring)}</strong>
+            </div>
+            <div>
+              <span>Confidence</span>
+              <strong>{selectedRecurring.confidence}</strong>
+            </div>
+            <div>
+              <span>Last</span>
+              <strong>{formatDate(selectedRecurring.lastDate, "")}</strong>
+            </div>
+            <div>
+              <span>Next</span>
+              <strong>{formatDate(selectedRecurring.nextExpected, "")}</strong>
+            </div>
+            <label class="recurring-toggle">
+              <span>Show in chart</span>
+              <input
+                type="checkbox"
+                checked={!hiddenRecurringKeys.has(selectedRecurring.key)}
+                on:change={(event) => {
+                  const target = event.currentTarget as HTMLInputElement;
+                  setRecurringVisibility(selectedRecurring.key, target.checked);
+                }}
+              />
+            </label>
+          </div>
+          <div class="recurring-detail-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Title</th>
+                  <th>Message</th>
+                  <th>Reference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each selectedRecurringTxs as tx}
+                  <tr>
+                    <td>{formatDate(tx.date, tx.rawDate)}</td>
+                    <td>{tx.amount.toFixed(2)}</td>
+                    <td>{tx.title ?? ""}</td>
+                    <td>{tx.message ?? ""}</td>
+                    <td>{tx.reference ?? ""}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <p class="subtle">Click a series in the chart or a name below to see details.</p>
+        {/if}
+      </div>
+    </section>
+
+    <section class="panel-row">
+      <div class="panel-block">
+        <h2>Top recurring counterparties</h2>
+        <div class="panel-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Counterparty</th>
+                <th>Total</th>
+                <th>Avg</th>
+                <th>Freq</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each topRecurring as row}
+                <tr>
+                  <td>
+                    <button class="link" on:click={() => selectRecurringByKey(row.key)}>
+                      {row.counterparty}
+                    </button>
+                  </td>
+                  <td>{row.totalAmount.toFixed(2)}</td>
+                  <td>{(row.totalAmount / row.occurrences).toFixed(2)}</td>
+                  <td>{row.frequency}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
         </div>
-        <div class="panel-block">
-          <h2>Top income</h2>
-          <ol>
-            {#each income.slice(0, topN) as row}
-              <li>{row.counterparty} — {row.total.toFixed(2)} ({row.count})</li>
-            {/each}
-          </ol>
+      </div>
+      <div class="panel-block">
+        <h2>Top spend</h2>
+        <div class="panel-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Counterparty</th>
+                <th>Total</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each spend.slice(0, topN) as row}
+                <tr>
+                  <td>{row.counterparty}</td>
+                  <td>{row.total.toFixed(2)}</td>
+                  <td>{row.count}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
         </div>
-        <div class="panel-block">
-          <h2>Big one-off spends</h2>
-          <ol>
-            {#each oneOffBigSpends as row}
-              <li>{row.counterparty ?? "(Unknown)"} — {row.amount.toFixed(2)} ({formatDate(row.date, row.rawDate)})</li>
-            {/each}
-          </ol>
+      </div>
+      <div class="panel-block">
+        <h2>Top income</h2>
+        <div class="panel-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Counterparty</th>
+                <th>Total</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each income.slice(0, topN) as row}
+                <tr>
+                  <td>{row.counterparty}</td>
+                  <td>{row.total.toFixed(2)}</td>
+                  <td>{row.count}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel-block">
+        <h2>Big one-off spends</h2>
+        <div class="panel-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Counterparty</th>
+                <th>Amount</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each oneOffBigSpends as row}
+                <tr>
+                  <td>{row.counterparty ?? "(Unknown)"}</td>
+                  <td>{row.amount.toFixed(2)}</td>
+                  <td>{formatDate(row.date, row.rawDate)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -493,38 +731,38 @@
     <section class="grid-block">
       <div class="transactions-head">
         <h2>Transactions</h2>
-        <div class="filters">
-          <input
-            type="text"
-            placeholder="Search counterparty, message, reference..."
-            bind:value={filterSearch}
-          />
-          <select bind:value={filterDirection}>
-            <option value="all">All</option>
-            <option value="out">Spend</option>
-            <option value="in">Income</option>
-          </select>
-          <input
-            type="number"
-            placeholder="Min amount"
-            min="0"
-            step="0.01"
-            bind:value={filterMinAmount}
-          />
-          <input
-            type="number"
-            placeholder="Max amount"
-            min="0"
-            step="0.01"
-            bind:value={filterMaxAmount}
-          />
-          <label class="toggle">
-            <input type="checkbox" bind:checked={filterRecurringOnly} />
-            <span>Recurring only</span>
-          </label>
-        </div>
       </div>
-      <Grid columns={transactionColumns} data={transactionRows} id="tx-grid" />
+      <div class="filters">
+        <input
+          type="text"
+          placeholder="Search counterparty, message, reference..."
+          bind:value={filterSearch}
+        />
+        <select bind:value={filterDirection}>
+          <option value="all">All</option>
+          <option value="out">Spend</option>
+          <option value="in">Income</option>
+        </select>
+        <input
+          type="number"
+          placeholder="Min amount"
+          min="0"
+          step="0.01"
+          bind:value={filterMinAmount}
+        />
+        <input
+          type="number"
+          placeholder="Max amount"
+          min="0"
+          step="0.01"
+          bind:value={filterMaxAmount}
+        />
+        <label class="toggle">
+          <input type="checkbox" bind:checked={filterRecurringOnly} />
+          <span>Recurring only</span>
+        </label>
+      </div>
+      <Grid columns={transactionColumns} data={transactionRows} />
     </section>
 
   </main>

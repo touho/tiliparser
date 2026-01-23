@@ -207,8 +207,13 @@ select,
   gap: 1.5rem;
 }
 
-.side-panel {
+.selected-panel {
+  align-self: start;
+}
+
+.panel-row {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1rem;
 }
 
@@ -219,15 +224,131 @@ select,
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.05);
 }
 
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
 .panel-block h2 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
 }
 
-.panel-block ol {
-  margin: 0;
-  padding-left: 1.1rem;
+.panel-block .link {
+  background: none;
+  border: none;
+  padding: 0;
   color: #2f3338;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.panel-block .link:hover {
+  color: #2b59c3;
+}
+
+.panel-table {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #eee6de;
+  border-radius: 12px;
+}
+
+.panel-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.panel-table th,
+.panel-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #f0e7df;
+  text-align: left;
+  vertical-align: top;
+}
+
+.panel-table th {
+  position: sticky;
+  top: 0;
+  background: #fffaf5;
+  font-weight: 600;
+}
+
+.panel-table tr:last-child td {
+  border-bottom: none;
+}
+
+.recurring-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.recurring-summary span {
+  display: block;
+  font-size: 0.7rem;
+  color: #7b756f;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recurring-summary strong {
+  display: block;
+  font-size: 0.9rem;
+  color: #2f3338;
+}
+
+.recurring-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recurring-toggle input {
+  margin-left: auto;
+}
+
+.recurring-detail-table {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #eee6de;
+  border-radius: 12px;
+}
+
+.recurring-detail-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.recurring-detail-table th,
+.recurring-detail-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #f0e7df;
+  text-align: left;
+  vertical-align: top;
+}
+
+.recurring-detail-table th {
+  position: sticky;
+  top: 0;
+  background: #fffaf5;
+  font-weight: 600;
+}
+
+.recurring-detail-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ghost.tiny {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
 }
 
 .transactions-head {
@@ -235,7 +356,7 @@ select,
   flex-wrap: wrap;
   gap: 1rem;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .filters {
