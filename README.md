@@ -5,6 +5,8 @@ Upload a bank CSV and the app surfaces likely recurring outflows.
 
 All processing happens locally in your browser. No backend, no database.
 
+Website: https://touho.kapsi.fi/tiliparser/
+
 ## Development
 - `npm run dev` — start the dev server
 
